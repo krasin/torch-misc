@@ -3,7 +3,7 @@
 
 require 'torch'
 
-local sid = {}
+local sid = { arch_protos = {} }
 
 -- Loads a trainable model from the file.
 -- Return model, arch, args, params and grad_params.
@@ -16,29 +16,25 @@ function sid.load(filename, use_cuda)
   return model, checkpoint.arch, checkpoint.args, params, grad_params
 end
 
+-- Registers a new network arch. Whenever a new network is requested with the given arch name,
+-- create_new(arch, args) will be passed.
+function sid.register_arch(arch, create_new)
+  if sid.arch_protos[arch] ~= nil then
+    error(string.format('sid.register_arch(%s): the arch is already registered', arch))
+  end
+  sid.arch_protos[arch] = create_new
+end
+
 -- Creates a trainable model of the specified arch and args.
 -- If params are specified, it will also fill the model with them.
 -- The function returns model, params, grad_params.
 -- Note: it will reuse the instance of params, if they were specified in the call of sid.create.
 function sid.create(arch, args, use_cuda, params)
-  function create_new(arch, args)
-    if arch == 'lala' then
-      local mlp = nn.Sequential()
-      local lin1 = nn.Linear(4, 4)
-      mlp:add(lin1)
-      mlp:add(nn.ReLU(false))
-      local lin2 = nn.Linear(4, 4)
-      print('lin1.weight (before share): ', lin1.weight)
-      print('lin2.weight (before share): ', lin2.weight)
-      lin2:share(lin1, 'weight', 'bias')
-      print('lin1.weight (after share): ', lin1.weight)
-      print('lin2.weight (after share): ', lin2.weight)
-      mlp:add(lin2)
-      mlp:add(nn.LogSoftMax())
-      return mlp
-    end
+  local create_new = sid.arch_protos[arch]
+  if create_new == nil then
     error(string.format('sid.create: unknown arch=%s.', arch))
   end
+
   local def_tensor_type = torch.getdefaulttensortype()
   torch.setdefaulttensortype('torch.FloatTensor')
   local model = create_new(arch, args)
