@@ -30,6 +30,11 @@ end
 -- The function returns module, params, grad_params.
 -- Note: it will reuse the instance of params, if they were specified in the call of sid.create.
 function sid.create(arch, args, use_cuda, params)
+  if params ~= nil and use_cuda and params:type() ~= 'torch.CudaTensor' then
+    error(string.format('sid.create(arch=%s, use_cuda=%s): params:type(): %s, want torch.CudaTensor',
+          arch, use_cuda, params:type()))
+  end
+
   local create_new = sid.arch_protos[arch]
   if create_new == nil then
     error(string.format('sid.create: unknown arch=%s.', arch))
