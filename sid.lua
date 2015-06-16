@@ -74,9 +74,8 @@ function sid.load_params(model, use_cuda, params)
     return res
   end
 
-  -- Convert a list of tensors with possibly shared storages into a single tensor.
-  -- If vals are specified, this is the tensors and values to use.
-  function flatten(use_cuda, vals_list, vals)
+  -- Returns a list of offsets in the unified storage and the size of the required storage
+  function compute_offsets(vals_list)
     -- 1. Group vals by storage and compute which continuous parts
     -- of the shared storage do they use.
     local chunks = {}
@@ -84,12 +83,12 @@ function sid.load_params(model, use_cuda, params)
       local val = vals_list[i]
       local key = torch.pointer(val:storage())
       if chunks[key] == nil then
-        print('New storage found: ', val:storage())
+        --print('New storage found: ', val:storage())
         chunks[key] = { storage = val:storage(),
                         min_index = val:storageOffset(),
                         max_index = get_max_index(val) }
       else
-        print('Detected shared storage: ', chunks[key].storage)
+        --print('Detected shared storage: ', chunks[key].storage)
         chunks[key].min_index = math.min(chunks[key].min_index, val:storageOffset())
         chunks[key].max_index = math.max(chunks[key].max_index, get_max_index(val))
       end
@@ -108,43 +107,66 @@ function sid.load_params(model, use_cuda, params)
     end
     local targetSize = curOffset - 1
 
-    -- 3. Prepare the target storage.
-    local targetTensor = nil
-    if vals == nil then
+
+    -- 3. Compute offsets for values in the target storage
+    local targetOffsets = {}
+    for i = 1, #vals_list do
+      local val = vals_list[i]
+      local key = torch.pointer(val:storage())
+      local chunk = chunks[key]
+      table.insert(targetOffsets, chunk.targetOffset + val:storageOffset() - chunk.min_index)
+    end
+
+    return targetOffsets, targetSize
+  end
+
+  -- Takes a list of tensors, prepares target storage, if needed,
+  -- and points these tensors to the unified storage.
+  -- Returns the unified storage. If vals is specified, it becomes the unified storage.
+  function flatten(use_cuda, targetSize, vals_list, vals_offsets, vals)
+    local targetTensor = vals
+    if targetTensor == nil then
       if use_cuda then
-        require 'cutorch'
-        require 'cunn'
         targetTensor = torch.CudaTensor(targetSize)
       else
         targetTensor = vals_list[1].new(targetSize)
       end
       targetTensor:zero()
-    else
-      if vals:storage():size() ~= targetSize then
-        error(string.format('Failed to flatten values. Want a storage with %d elements' +
-              ', but a storage with %d elements provided.', targetSize, vals:storage():size()))
+
+      -- Now, copy the values from vals_list to targetStorage
+      for i = 1, #vals_list do
+        local val = vals_list[i]
+        local dest = targetTensor:new()
+        dest:set(targetTensor:storage(), vals_offsets[i], val:size(), val:stride())
+        dest:copy(val)
       end
-      targetTensor = torch.reshape(vals, targetSize)
     end
 
-    -- 4. Set target storage to the value tensors.
     for i = 1, #vals_list do
       local val = vals_list[i]
-      local key = torch.pointer(val:storage())
-      local chunk = chunks[key]
-      print('val: ', val:type())
-      print('targetTensor: ', targetTensor:type())
-      -- Note: here is a problem, if use_cuda == true, because val
-      -- would still be FloatTensor.
-      val:set(targetTensor:storage(), chunk.targetOffset + val:storageOffset() - chunk.min_index,
-              val:size(), val:stride())
+      --print('val: ', val:type(), val:size())
+      --print('targetTensor: ', targetTensor:type(), targetTensor:size())
+      val:set(targetTensor:storage(), vals_offsets[i], val:size(), val:stride())
     end
 
     return targetTensor
   end
 
-  local flat_params = flatten(use_cuda, params_list, params)
-  local flat_grad_params = flatten(use_cuda, grad_params_list)
+  local params_offsets, params_size = compute_offsets(params_list)
+  local grad_params_offsets, grad_params_size = compute_offsets(grad_params_list)
+
+  if use_cuda then
+     require 'cutorch'
+     require 'cunn'
+     model:cuda()
+     params_list, grad_params_list = model:parameters()
+  end
+
+  local flat_params = flatten(use_cuda, params_size, params_list, params_offsets, params)
+  local flat_grad_params = flatten(use_cuda, grad_params_size, grad_params_list, grad_params_offsets)
+  print('flat_params: ', flat_params)
+  print('flat_grad_params: ', flat_grad_params)
+
   return flat_params, flat_grad_params
 end
 
