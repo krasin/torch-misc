@@ -1,19 +1,19 @@
--- this file provides functions to save and load trainable models.
+-- this file provides functions to save and load trainable modules.
 -- work in progress, anything and everything could be changed.
 
 require 'torch'
 
 local sid = { arch_protos = {} }
 
--- Loads a trainable model from the file.
--- Return model, arch, args, params and grad_params.
+-- Loads a trainable module from the file.
+-- Return module, arch, args, params and grad_params.
 function sid.load(filename, use_cuda)
   local checkpoint = torch.load(filename)
   if use_cuda then
     checkpoint.params:cuda()
   end
-  local model, params, grad_params = sid.create(checkpoint.arch, checkpoint.args, use_cuda, checkpoint.params)
-  return model, checkpoint.arch, checkpoint.args, params, grad_params
+  local module, params, grad_params = sid.create(checkpoint.arch, checkpoint.args, use_cuda, checkpoint.params)
+  return module, checkpoint.arch, checkpoint.args, params, grad_params
 end
 
 -- Registers a new network arch. Whenever a new network is requested with the given arch name,
@@ -25,9 +25,9 @@ function sid.register_arch(arch, create_new)
   sid.arch_protos[arch] = create_new
 end
 
--- Creates a trainable model of the specified arch and args.
--- If params are specified, it will also fill the model with them.
--- The function returns model, params, grad_params.
+-- Creates a trainable module of the specified arch and args.
+-- If params are specified, it will also fill the module with them.
+-- The function returns module, params, grad_params.
 -- Note: it will reuse the instance of params, if they were specified in the call of sid.create.
 function sid.create(arch, args, use_cuda, params)
   local create_new = sid.arch_protos[arch]
@@ -37,13 +37,18 @@ function sid.create(arch, args, use_cuda, params)
 
   local def_tensor_type = torch.getdefaulttensortype()
   torch.setdefaulttensortype('torch.FloatTensor')
-  local model = create_new(arch, args)
+  local module = create_new(arch, args)
   torch.setdefaulttensortype(def_tensor_type)
-  local params, grad_params = sid.load_params(model, use_cuda, params)
-  return model, params, grad_params
+
+  if module == nil then
+    error(string.format('create_new for arch=%s returned nil, instead of a module', arch))
+  end
+
+  local params, grad_params = sid.load_params(module, use_cuda, params)
+  return module, params, grad_params
 end
 
--- sid.save writes a trainable model into a file
+-- sid.save writes a trainable module into a file
 function sid.save(filename, arch, args, params)
   local checkpoint = {
     arch = arch,
@@ -55,11 +60,11 @@ function sid.save(filename, arch, args, params)
   torch.save(filename, checkpoint)
 end
 
--- sid.load_params takes a trainable model and merges all parameters into a single Tensor.
+-- sid.load_params takes a trainable module and merges all parameters into a single Tensor.
 -- If params is not given, a new Tensor is created.
 -- sid.load returns params and grad_params.
-function sid.load_params(model, use_cuda, params)
-  local params_list, grad_params_list = model:parameters()
+function sid.load_params(module, use_cuda, params)
+  local params_list, grad_params_list = module:parameters()
 
   -- Returns max index used in the underlying storage.
   function get_max_index(tensor)
@@ -79,12 +84,10 @@ function sid.load_params(model, use_cuda, params)
       local val = vals_list[i]
       local key = torch.pointer(val:storage())
       if chunks[key] == nil then
-        --print('New storage found: ', val:storage())
         chunks[key] = { storage = val:storage(),
                         min_index = val:storageOffset(),
                         max_index = get_max_index(val) }
       else
-        --print('Detected shared storage: ', chunks[key].storage)
         chunks[key].min_index = math.min(chunks[key].min_index, val:storageOffset())
         chunks[key].max_index = math.max(chunks[key].max_index, get_max_index(val))
       end
@@ -154,14 +157,12 @@ function sid.load_params(model, use_cuda, params)
   if use_cuda then
      require 'cutorch'
      require 'cunn'
-     model:cuda()
-     params_list, grad_params_list = model:parameters()
+     module:cuda()
+     params_list, grad_params_list = module:parameters()
   end
 
   local flat_params = flatten(use_cuda, params_size, params_list, params_offsets, params)
   local flat_grad_params = flatten(use_cuda, grad_params_size, grad_params_list, grad_params_offsets)
-  print('flat_params: ', flat_params)
-  print('flat_grad_params: ', flat_grad_params)
 
   return flat_params, flat_grad_params
 end
