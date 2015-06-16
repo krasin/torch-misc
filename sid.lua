@@ -24,9 +24,16 @@ function sid.create(arch, args, use_cuda, params)
   function create_new(arch, args)
     if arch == 'lala' then
       local mlp = nn.Sequential()
-      mlp:add(nn.Linear(10, 4))
+      local lin1 = nn.Linear(4, 4)
+      mlp:add(lin1)
       mlp:add(nn.ReLU(false))
-      mlp:add(nn.Linear(4, 2))
+      local lin2 = nn.Linear(4, 4)
+      print('lin1.weight (before share): ', lin1.weight)
+      print('lin2.weight (before share): ', lin2.weight)
+      lin2:share(lin1, 'weight', 'bias')
+      print('lin1.weight (after share): ', lin1.weight)
+      print('lin2.weight (after share): ', lin2.weight)
+      mlp:add(lin2)
       mlp:add(nn.LogSoftMax())
       return mlp
     end
@@ -36,12 +43,7 @@ function sid.create(arch, args, use_cuda, params)
   torch.setdefaulttensortype('torch.FloatTensor')
   local model = create_new(arch, args)
   torch.setdefaulttensortype(def_tensor_type)
-  if use_cuda then
-    require 'cutorch'
-    require 'cunn'
-    model:cuda()
-  end
-  local params, grad_params = sid.load_params(model, params)
+  local params, grad_params = sid.load_params(model, use_cuda, params)
   return model, params, grad_params
 end
 
@@ -60,7 +62,7 @@ end
 -- sid.load_params takes a trainable model and merges all parameters into a single Tensor.
 -- If params is not given, a new Tensor is created.
 -- sid.load returns params and grad_params.
-function sid.load_params(model, params)
+function sid.load_params(model, use_cuda, params)
   local params_list, grad_params_list = model:parameters()
 
   -- Returns max index used in the underlying storage.
@@ -74,7 +76,7 @@ function sid.load_params(model, params)
 
   -- Convert a list of tensors with possibly shared storages into a single tensor.
   -- If vals are specified, this is the tensors and values to use.
-  function flatten(vals_list, vals)
+  function flatten(use_cuda, vals_list, vals)
     -- 1. Group vals by storage and compute which continuous parts
     -- of the shared storage do they use.
     local chunks = {}
@@ -82,10 +84,12 @@ function sid.load_params(model, params)
       local val = vals_list[i]
       local key = torch.pointer(val:storage())
       if chunks[key] == nil then
+        print('New storage found: ', val:storage())
         chunks[key] = { storage = val:storage(),
                         min_index = val:storageOffset(),
                         max_index = get_max_index(val) }
       else
+        print('Detected shared storage: ', chunks[key].storage)
         chunks[key].min_index = math.min(chunks[key].min_index, val:storageOffset())
         chunks[key].max_index = math.max(chunks[key].max_index, get_max_index(val))
       end
@@ -107,7 +111,13 @@ function sid.load_params(model, params)
     -- 3. Prepare the target storage.
     local targetTensor = nil
     if vals == nil then
-      targetTensor = vals_list[1].new(targetSize)
+      if use_cuda then
+        require 'cutorch'
+        require 'cunn'
+        targetTensor = torch.CudaTensor(targetSize)
+      else
+        targetTensor = vals_list[1].new(targetSize)
+      end
       targetTensor:zero()
     else
       if vals:storage():size() ~= targetSize then
@@ -122,6 +132,10 @@ function sid.load_params(model, params)
       local val = vals_list[i]
       local key = torch.pointer(val:storage())
       local chunk = chunks[key]
+      print('val: ', val:type())
+      print('targetTensor: ', targetTensor:type())
+      -- Note: here is a problem, if use_cuda == true, because val
+      -- would still be FloatTensor.
       val:set(targetTensor:storage(), chunk.targetOffset + val:storageOffset() - chunk.min_index,
               val:size(), val:stride())
     end
@@ -129,8 +143,8 @@ function sid.load_params(model, params)
     return targetTensor
   end
 
-  local flat_params = flatten(params_list, params)
-  local flat_grad_params = flatten(grad_params_list)
+  local flat_params = flatten(use_cuda, params_list, params)
+  local flat_grad_params = flatten(use_cuda, grad_params_list)
   return flat_params, flat_grad_params
 end
 
