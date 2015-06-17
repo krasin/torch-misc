@@ -2,6 +2,7 @@
 -- work in progress, anything and everything could be changed.
 
 require 'torch'
+require 'nn'
 
 local sid = { arch_protos = {} }
 local Dog = torch.class('nn.Dog')
