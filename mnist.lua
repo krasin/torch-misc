@@ -145,6 +145,16 @@ function State:evalAccuracy(input, labels)
     return matches / labels:size(1)
 end
 
+function State:save(filename)
+  local dog_obj = sid.to_save(self.dog)
+  local checkpoint = {
+    dog = dog_obj,
+    mean = self.mean,
+    std = self.std
+  }
+  torch.save(filename, checkpoint)
+end
+
 -- Define the network creation
 
 inputSize = 32*32
@@ -250,7 +260,7 @@ classes = state:predict(state.trainData.data[{{1, 2}}])
 print("predicted classes: ", classes)
 print("ground truth: ", state.trainData.labels[{{1, 2}}])
 
-sid.save(string.format('mnist-%s.nn', os.time()), state.dog)
+state:save(string.format('mnist-%s.nn', os.time()))
 
 trainAcc = state:evalAccuracy(state.trainData.data, state.trainData.labels)
 print('train accuracy: ', trainAcc)

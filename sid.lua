@@ -15,13 +15,13 @@ function Dog:__init(arch, args, params, grad_params, module)
   self.module = module
 end
 
--- Loads a trainable model (nn.Dog) from the file.
-function sid.load(filename, use_cuda)
-  local checkpoint = torch.load(filename)
+-- Loads a trainable model (nn.Dog) from an object previously created with sid.to_save.
+function sid.load_from(obj, use_cuda)
+  local params = obj.params
   if use_cuda then
-    checkpoint.params = checkpoint.params:cuda()
+    params = params:cuda()
   end
-  return sid.create(checkpoint.arch, checkpoint.args, use_cuda, checkpoint.params)
+  return sid.create(obj.arch, obj.args, use_cuda, params)
 end
 
 -- Registers a new network arch. Whenever a new network is requested with the given arch name,
@@ -61,15 +61,15 @@ function sid.create(arch, args, use_cuda, params)
   return dog
 end
 
--- sid.save writes a trainable model (nn.Dog) into a file
-function sid.save(filename, dog)
+-- sid.to_save returns an object that can be saved with torch.save and later be loaded with sid.load_from.
+function sid.to_save(dog)
   if dog.params == nil then error('sid.save: dog.params == nil') end
   local checkpoint = {
     arch = dog.arch,
     args = dog.args,
     params = dog.params:float()
   }
-  torch.save(filename, checkpoint)
+  return checkpoint
 end
 
 -- sid.load_params takes a module and merges all parameters into a single Tensor.

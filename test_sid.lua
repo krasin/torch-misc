@@ -89,8 +89,9 @@ local function check_save_and_load(use_cuda)
   local arch = 'test_sid'
   local args = nil
   local dog = sid.create(arch, args, use_cuda)
-  sid.save(filename, dog)
-  local dog2 = sid.load(filename, use_cuda)
+  torch.save(filename, sid.to_save(dog))
+  local obj = torch.load(filename)
+  local dog2 = sid.load_from(obj, use_cuda)
 
   mytester:asserteq(dog.arch, dog2.arch, title .. 'arch')
   mytester:asserteq(dog.args, dog2.args, title .. 'args')
