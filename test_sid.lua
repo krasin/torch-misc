@@ -73,9 +73,6 @@ local function check_create_with_params(use_cuda)
 end
 
 function test.create()
-  -- Register our test arch
-  sid.register_arch('test_sid', create_module)
-
   -- Checks that we can create a new module given an arch name and args.
   check_simple_create(false)
   check_simple_create(true)
@@ -84,6 +81,29 @@ function test.create()
   check_create_with_params(false)
   check_create_with_params(true)
 end
+
+local function check_save_and_load(use_cuda)
+  local title = string.format('check_load_and_save(use_cuda=%s): ', use_cuda)
+  local filename = os.tmpname()
+  local title = string.format('check_simple_create(use_cuda=%s): ', use_cuda)
+  local arch = 'test_sid'
+  local args = nil
+  local module, params, grad_params = sid.create(arch, args, use_cuda)
+  sid.save(filename, arch, args, params)
+  local module2, arch2, args2, params2, grad_params2 = sid.load(filename, use_cuda)
+
+  mytester:asserteq(arch, arch2, title .. 'arch')
+  mytester:asserteq(args, args2, title .. 'args')
+  mytester:assertTensorEq(params, params2, precision_mean, title .. 'params')
+end
+
+function test.save_and_load()
+  check_save_and_load(false)
+  check_save_and_load(true)
+end
+
+-- Register our test arch
+sid.register_arch('test_sid', create_module)
 
 -- Now run the test above
 mytester:add(test)

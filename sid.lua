@@ -10,7 +10,7 @@ local sid = { arch_protos = {} }
 function sid.load(filename, use_cuda)
   local checkpoint = torch.load(filename)
   if use_cuda then
-    checkpoint.params:cuda()
+    checkpoint.params = checkpoint.params:cuda()
   end
   local module, params, grad_params = sid.create(checkpoint.arch, checkpoint.args, use_cuda, checkpoint.params)
   return module, checkpoint.arch, checkpoint.args, params, grad_params
@@ -55,13 +55,12 @@ end
 
 -- sid.save writes a trainable module into a file
 function sid.save(filename, arch, args, params)
+  if params == nil then error('sid.save: params not specified') end
   local checkpoint = {
     arch = arch,
     args = args,
+    params = params:float()
   }
-  if params ~= nil then
-    checkpoint.params = params:float()
-  end
   torch.save(filename, checkpoint)
 end
 
