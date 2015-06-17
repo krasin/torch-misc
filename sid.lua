@@ -4,16 +4,23 @@
 require 'torch'
 
 local sid = { arch_protos = {} }
+local Dog = torch.class('nn.Dog')
 
--- Loads a trainable module from the file.
--- Return module, arch, args, params and grad_params.
+function Dog:__init(arch, args, params, grad_params, module)
+  self.arch = arch
+  self.args = args
+  self.params = params
+  self.grad_params = grad_params
+  self.module = module
+end
+
+-- Loads a trainable model (nn.Dog) from the file.
 function sid.load(filename, use_cuda)
   local checkpoint = torch.load(filename)
   if use_cuda then
     checkpoint.params = checkpoint.params:cuda()
   end
-  local module, params, grad_params = sid.create(checkpoint.arch, checkpoint.args, use_cuda, checkpoint.params)
-  return module, checkpoint.arch, checkpoint.args, params, grad_params
+  return sid.create(checkpoint.arch, checkpoint.args, use_cuda, checkpoint.params)
 end
 
 -- Registers a new network arch. Whenever a new network is requested with the given arch name,
@@ -25,9 +32,8 @@ function sid.register_arch(arch, create_new)
   sid.arch_protos[arch] = create_new
 end
 
--- Creates a trainable module of the specified arch and args.
--- If params are specified, it will also fill the module with them.
--- The function returns module, params, grad_params.
+-- Creates a trainable model (nn.Dog) of the specified arch and args.
+-- If params are specified, it will also fill the internal module with them.
 -- Note: it will reuse the instance of params, if they were specified in the call of sid.create.
 function sid.create(arch, args, use_cuda, params)
   if params ~= nil and use_cuda and params:type() ~= 'torch.CudaTensor' then
@@ -50,21 +56,22 @@ function sid.create(arch, args, use_cuda, params)
   end
 
   local params, grad_params = sid.load_params(module, use_cuda, params)
-  return module, params, grad_params
+  local dog = nn.Dog(arch, args, params, grad_params, module)
+  return dog
 end
 
--- sid.save writes a trainable module into a file
-function sid.save(filename, arch, args, params)
-  if params == nil then error('sid.save: params not specified') end
+-- sid.save writes a trainable model (nn.Dog) into a file
+function sid.save(filename, dog)
+  if dog.params == nil then error('sid.save: dog.params == nil') end
   local checkpoint = {
-    arch = arch,
-    args = args,
-    params = params:float()
+    arch = dog.arch,
+    args = dog.args,
+    params = dog.params:float()
   }
   torch.save(filename, checkpoint)
 end
 
--- sid.load_params takes a trainable module and merges all parameters into a single Tensor.
+-- sid.load_params takes a module and merges all parameters into a single Tensor.
 -- If params is not given, a new Tensor is created.
 -- sid.load returns params and grad_params.
 function sid.load_params(module, use_cuda, params)
