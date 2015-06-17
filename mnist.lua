@@ -3,9 +3,12 @@ require 'nn'
 require 'nngraph'
 require 'optim'
 sid = require 'sid'
+local class = require 'class'
 
 local mnist = {}
-local State = torch.class('State')
+local State = class('State')
+
+mnist.State = State
 
 function State:__init(use_cuda)
   self.use_cuda = use_cuda
