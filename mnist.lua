@@ -3,65 +3,147 @@ require 'nn'
 require 'nngraph'
 require 'optim'
 sid = require 'sid'
+local class = require 'class'
 
--- Whether to use CUDA, -1: use CPU, >=0: use corresponding GPU
-gpuid = 0
-if gpuid >= 0 then
-    use_cuda = true
-    print('using CUDA on GPU ' .. gpuid .. '...')
-    require 'cutorch'
-    require 'cunn'
-    cutorch.setDevice(gpuid + 1) -- note +1 to make it 0 indexed! sigh lua
+
+local State = class('State')
+
+function State:__init(use_cuda)
+  self.use_cuda = use_cuda
 end
 
--- Returns preprocessed trainData, valData and testData sets,
--- and mean, std used for preprocessing.
-local function load_data(dir)
+-- Loads and preprocesses train/val/test data.
+function State:load_data(dir)
   -- Load MNIST data
   local trainFile = dir .. '/train_32x32.t7'
   local testFile = dir .. '/test_32x32.t7'
-  local trainData = torch.load(trainFile,'ascii')
-  trainData.data = trainData.data:float()
-  trainData.labels = trainData.labels:float()
-  local valData = { data=trainData.data[{{50001, 60000}}],
-                    labels=trainData.labels[{{50001, 60000}}] }
-  trainData.data = trainData.data[{{1, 50000}}]
-  trainData.labels = trainData.labels[{{1, 50000}}]
-  local testData = torch.load(testFile,'ascii')
-  testData.data = testData.data:float()
-  testData.labels = testData.labels:float()
+  self.trainData = torch.load(trainFile,'ascii')
+  self.trainData.data = self.trainData.data:float()
+  self.trainData.labels = self.trainData.labels:float()
+  self.valData = { data=self.trainData.data[{{50001, 60000}}],
+                    labels=self.trainData.labels[{{50001, 60000}}] }
+  self.trainData.data = self.trainData.data[{{1, 50000}}]
+  self.trainData.labels = self.trainData.labels[{{1, 50000}}]
+  self.testData = torch.load(testFile,'ascii')
+  self.testData.data = self.testData.data:float()
+  self.testData.labels = self.testData.labels:float()
 
   -- Preprocess train, val and test data.
 
   -- 1. Calculate mean for train data and subtract the mean from train, val and test data.
-  local mean = trainData.data:mean()
-  trainData.data:add(-mean)
-  valData.data:add(-mean)
-  testData.data:add(-mean)
+  self.mean = self.trainData.data:mean()
+  self.trainData.data:add(-self.mean)
+  self.valData.data:add(-self.mean)
+  self.testData.data:add(-self.mean)
 
   -- 2. Calculate std deviation for train data and divide by it
-  local std = trainData.data:std()
-  trainData.data:div(std)
-  valData.data:div(std)
-  testData.data:div(std)
+  self.std = self.trainData.data:std()
+  self.trainData.data:div(self.std)
+  self.valData.data:div(self.std)
+  self.testData.data:div(self.std)
 
   print('Train data:')
-  print(trainData.labels[{{1, 6}}])
-  print("size: ", trainData.data:size(), trainData.labels:size())
+  print(self.trainData.labels[{{1, 6}}])
+  print("size: ", self.trainData.data:size(), self.trainData.labels:size())
   print()
 
   print('Test data:')
-  print(testData.data:size())
-  print(testData.labels[{{1, 6}}])
+  print(self.testData.data:size())
+  print(self.testData.labels[{{1, 6}}])
   print()
 
-  return trainData, valData, testData, mean, std
+  self:init_train()
 end
 
-trainData, valData, testData, mean, std = load_data('data/mnist.t7')
+function State:init_train()
+  -- Training facilities
+  self.reg = 1000 / self.dog.params:size(1) -- L2 regularization strength
+  self.gradClip = 5
 
-print('mean: ', mean)
-print('std: ', std)
+  self.batchSize = 50
+  self.maxBatch = self.trainData.data:size(1) / self.batchSize
+  print('maxBatch: ', self.maxBatch)
+  self.curBatch = 1
+end
+
+function State:feval(x)
+    local dog = self.dog
+    if x ~= dog.params then
+        dog.params:copy(x)
+    end
+    dog.grad_params:zero()
+    ------------------ get minibatch -------------------
+    local batchStart = (self.curBatch-1)*self.batchSize + 1
+    local batchEnd = batchStart + self.batchSize - 1
+    self.curBatch = self.curBatch + 1
+    if self.curBatch > self.maxBatch then
+        self.curBatch = 1
+    end
+    local x = self.trainData.data[{{batchStart, batchEnd}}]
+    local y = self.trainData.labels[{{batchStart, batchEnd}}]
+    if self.use_cuda then
+        x = x:float():cuda()
+        y = y:float():cuda()
+    end
+
+    ------------------- forward pass -------------------
+    dog.module:training() -- make sure we are in correct mode 
+    local prediction = dog.module:forward(x)
+    local paramNorm = dog.params:norm()
+    local loss = self.criterion:forward(prediction, y) + self.reg * paramNorm * paramNorm / 2
+
+    ------------------ backward pass -------------------
+    local dprediction = self.criterion:backward(prediction, y)
+    dog.module:backward(x, dprediction)
+    
+    dog.grad_params:add(self.reg, dog.params) -- apply regularization gradient
+    dog.grad_params:clamp(-self.gradClip, self.gradClip)
+    return loss, dog.grad_params
+end
+
+-- Create a dog to train and a criterion.
+function State:create_new()
+  local dog = sid.create('mnist_conv', nil, use_cuda)
+  local criterion = nn.ClassNLLCriterion()
+  if self.use_cuda then
+    criterion:cuda()
+  end
+
+  print('params: ', dog.params:size(), dog.params:type())
+  print('gradParams: ', dog.grad_params:size(), dog.grad_params:type())
+
+  -- initialization
+  dog.params:uniform(-0.08, 0.08) -- small numbers uniform
+  self.dog = dog
+  self.criterion = criterion
+end
+
+function State:predict(input)
+    local x = input
+    if self.use_cuda then
+        x = x:float():cuda()
+    end
+    self.dog.module:evaluate() -- turn off dropout
+    local prediction = self.dog.module:forward(x)
+    local _, classes = prediction:max(2)
+    return classes
+end
+
+function State:evalAccuracy(input, labels)
+    local matches = 0
+    local batchSize = 1000
+    local from = 1
+    for i = 1, input:size(1) do
+        if i - from + 1 >= batchSize or i == input:size(1) then
+            local curLabels = labels[{{from, i}}]
+            local predictions = self:predict(input[{{from, i}}], curLabels):float()
+            curLabels:map(predictions, function(xx, yy) if xx == yy then matches = matches + 1 end end)
+            from = i+1
+        end
+    end
+    
+    return matches / labels:size(1)
+end
 
 -- Define the network creation
 
@@ -111,71 +193,22 @@ end
 
 sid.register_arch('mnist_conv', create_mnist_net)
 
--- Create a dog to train. Returns dog and criterion.
-local function create_new()
-  local dog = sid.create('mnist_conv', nil, use_cuda)
-  local criterion = nn.ClassNLLCriterion()
-  if use_cuda then
-    criterion:cuda()
-  end
-
-  print('params: ', dog.params:size(), dog.params:type())
-  print('gradParams: ', dog.grad_params:size(), dog.grad_params:type())
-
-  -- initialization
-  dog.params:uniform(-0.08, 0.08) -- small numbers uniform
-  return dog, criterion
+-- Whether to use CUDA, -1: use CPU, >=0: use corresponding GPU
+gpuid = 0
+if gpuid >= 0 then
+    use_cuda = true
+    print('using CUDA on GPU ' .. gpuid .. '...')
+    require 'cutorch'
+    require 'cunn'
+    cutorch.setDevice(gpuid + 1) -- note +1 to make it 0 indexed! sigh lua
 end
 
-dog, criterion = create_new()
+state = State(use_cuda)
+state:create_new()
+state:load_data('data/mnist.t7')
 
--- Training facilities
-reg = 1000 / dog.params:size(1) -- L2 regularization strength
-gradClip = 5
-
-batchSize = 50
-maxBatch = trainData.data:size(1) / batchSize
---maxBatch = maxBatch / 10 -- test for overfit; TODO: remove before commit.
-print('maxBatch: ', maxBatch)
-curBatch = 1
-
-function feval(x)
-    if x ~= dog.params then
-        dog.params:copy(x)
-    end
-    dog.grad_params:zero()
-    ------------------ get minibatch -------------------
-    local batchStart = (curBatch-1)*batchSize + 1
-    local batchEnd = batchStart + batchSize - 1
-    curBatch = curBatch + 1
-    if curBatch > maxBatch then
-        curBatch = 1
-    end
-    --local x = torch.reshape(trainData.data[{{batchStart, batchEnd}}], batchSize, inputSize)
-    local x = trainData.data[{{batchStart, batchEnd}}]
-    local y = trainData.labels[{{batchStart, batchEnd}}]
-    if use_cuda then
-        x = x:float():cuda()
-        y = y:float():cuda()
-    end
-
-    ------------------- forward pass -------------------
-    dog.module:training() -- make sure we are in correct mode 
-    local prediction = dog.module:forward(x)
-    local paramNorm = dog.params:norm()
-    local loss = criterion:forward(prediction, y) + reg * paramNorm * paramNorm / 2
-
-    ------------------ backward pass -------------------
-    local dprediction = criterion:backward(prediction, y)
-    dog.module:backward(x, dprediction)
-    
-    dog.grad_params:add(reg, dog.params) -- apply regularization gradient
-    dog.grad_params:clamp(-gradClip, gradClip)
-    return loss, dog.grad_params
-end
-
-loss, _ = feval(dog.params)
-print('loss: ', loss)
+print('mean: ', state.mean)
+print('std: ', state.std)
 
 optimState = {learningRate = 0.0003, alpha = 0.9}
 learningRateDecay = 0.9
@@ -197,7 +230,7 @@ for i = 1, iterations do
         end
         --print(string.format('Starting epoch %d, lr: %f', epoch, optimState.learningRate))
     end
-    local _, loss = optim.rmsprop(feval, dog.params, optimState)
+    local _, loss = optim.rmsprop(function(x) return state:feval(x) end, state.dog.params, optimState)
     trainLoss = loss[1]
     if trainLoss < minLoss then minLoss = trainLoss end
     if trainLoss > maxLoss then maxLoss = trainLoss end
@@ -213,47 +246,17 @@ for i = 1, iterations do
     end
 end
 
-function predict(input)
-    --print ('input: ', input:size())
-    --local x = torch.reshape(input, input:size(1), inputSize)
-    local x = input
-    if gpuid >= 0 then
-        x = x:float():cuda()
-    end
-    dog.module:evaluate() -- turn off dropout
-    local prediction = dog.module:forward(x)
-    local _, classes = prediction:max(2)
-    return classes
-end
-classes = predict(trainData.data[{{1, 2}}])
+classes = state:predict(state.trainData.data[{{1, 2}}])
 print("predicted classes: ", classes)
-print("ground truth: ", trainData.labels[{{1, 2}}])
+print("ground truth: ", state.trainData.labels[{{1, 2}}])
 
-function evalAccuracy(input, labels)
-    local matches = 0
-    local batchSize = 1000
-    local from = 1
-    for i = 1, input:size(1) do
-        if i - from + 1 >= batchSize or i == input:size(1) then
-            --print ('i=', i, ' from: ', from)
-            local curLabels = labels[{{from, i}}]
-            local predictions = predict(input[{{from, i}}], curLabels):float()
-            --print ('predictions: ', predictions:size(), predictions:type())
-            curLabels:map(predictions, function(xx, yy) if xx == yy then matches = matches + 1 end end)
-            from = i+1
-        end
-    end
-    
-    return matches / labels:size(1)
-end
+sid.save(string.format('mnist-%s.nn', os.time()), state.dog)
 
-sid.save(string.format('mnist-%s.nn', os.time()), dog)
-
-trainAcc = evalAccuracy(trainData.data, trainData.labels)
+trainAcc = state:evalAccuracy(state.trainData.data, state.trainData.labels)
 print('train accuracy: ', trainAcc)
 
-valAcc = evalAccuracy(valData.data, valData.labels)
+valAcc = state:evalAccuracy(state.valData.data, state.valData.labels)
 print('validation accuracy: ', valAcc)
 
--- testAcc = evalAccuracy(testData.data, testData.labels)
+-- testAcc = state:evalAccuracy(state.testData.data, state.testData.labels)
 -- print('test accuracy: ', testAcc)
