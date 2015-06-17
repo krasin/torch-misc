@@ -85,7 +85,6 @@ end
 local function check_save_and_load(use_cuda)
   local title = string.format('check_load_and_save(use_cuda=%s): ', use_cuda)
   local filename = os.tmpname()
-  local title = string.format('check_simple_create(use_cuda=%s): ', use_cuda)
   local arch = 'test_sid'
   local args = nil
   local dog = sid.create(arch, args, use_cuda)
