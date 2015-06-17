@@ -14,45 +14,54 @@ if gpuid >= 0 then
     cutorch.setDevice(gpuid + 1) -- note +1 to make it 0 indexed! sigh lua
 end
 
--- Load MNIST data
-trainFile = 'data/mnist.t7/train_32x32.t7'
-testFile = 'data/mnist.t7/test_32x32.t7'
-trainData = torch.load(trainFile,'ascii')
-trainData.data = trainData.data:float()
-trainData.labels = trainData.labels:float()
-valData = { data=trainData.data[{{50001, 60000}}],
-            labels=trainData.labels[{{50001, 60000}}] }
-trainData.data = trainData.data[{{1, 50000}}]
-trainData.labels = trainData.labels[{{1, 50000}}]
-testData = torch.load(testFile,'ascii')
-testData.data = testData.data:float()
-testData.labels = testData.labels:float()
+-- Returns preprocessed trainData, valData and testData sets,
+-- and mean, std used for preprocessing.
+function load_data(dir)
+  -- Load MNIST data
+  local trainFile = dir .. '/train_32x32.t7'
+  local testFile = dir .. '/test_32x32.t7'
+  local trainData = torch.load(trainFile,'ascii')
+  trainData.data = trainData.data:float()
+  trainData.labels = trainData.labels:float()
+  local valData = { data=trainData.data[{{50001, 60000}}],
+                    labels=trainData.labels[{{50001, 60000}}] }
+  trainData.data = trainData.data[{{1, 50000}}]
+  trainData.labels = trainData.labels[{{1, 50000}}]
+  local testData = torch.load(testFile,'ascii')
+  testData.data = testData.data:float()
+  testData.labels = testData.labels:float()
 
--- Preprocess train, val and test data.
+  -- Preprocess train, val and test data.
 
--- 1. Calculate mean for train data and subtract the mean from train, val and test data.
-mean = trainData.data:mean()
+  -- 1. Calculate mean for train data and subtract the mean from train, val and test data.
+  local mean = trainData.data:mean()
+  trainData.data:add(-mean)
+  valData.data:add(-mean)
+  testData.data:add(-mean)
+
+  -- 2. Calculate std deviation for train data and divide by it
+  local std = trainData.data:std()
+  trainData.data:div(std)
+  valData.data:div(std)
+  testData.data:div(std)
+
+  print('Train data:')
+  print(trainData.labels[{{1, 6}}])
+  print("size: ", trainData.data:size(), trainData.labels:size())
+  print()
+
+  print('Test data:')
+  print(testData.data:size())
+  print(testData.labels[{{1, 6}}])
+  print()
+
+  return trainData, valData, testData, mean, std
+end
+
+trainData, valData, testData, mean, std = load_data('data/mnist.t7')
+
 print('mean: ', mean)
-trainData.data:add(-mean)
-valData.data:add(-mean)
-testData.data:add(-mean)
-
--- 2. Calculate std deviation for train data and divide by it
-std = trainData.data:std()
 print('std: ', std)
-trainData.data:div(std)
-valData.data:div(std)
-testData.data:div(std)
-
-print('Train data:')
-print(trainData.labels[{{1, 6}}])
-print("size: ", trainData.data:size(), trainData.labels:size())
-print()
-
-print('Test data:')
-print(testData.data:size())
-print(testData.labels[{{1, 6}}])
-print()
 
 -- Define the network creation
 
@@ -244,4 +253,3 @@ print('validation accuracy: ', valAcc)
 
 -- testAcc = evalAccuracy(testData.data, testData.labels)
 -- print('test accuracy: ', testAcc)
-
