@@ -2,6 +2,7 @@ require 'torch'
 require 'nn'
 require 'nngraph'
 require 'optim'
+require 'lfs'
 sid = require 'sid'
 local class = require 'class'
 
@@ -17,41 +18,41 @@ end
 -- Loads and preprocesses train/val/test data.
 function State:load_data(dir)
   -- Load MNIST data
-  local trainFile = dir .. '/train_32x32.t7'
-  local testFile = dir .. '/test_32x32.t7'
-  self.trainData = torch.load(trainFile,'ascii')
-  self.trainData.data = self.trainData.data:float()
-  self.trainData.labels = self.trainData.labels:float()
-  self.valData = { data=self.trainData.data[{{50001, 60000}}],
-                    labels=self.trainData.labels[{{50001, 60000}}] }
-  self.trainData.data = self.trainData.data[{{1, 50000}}]
-  self.trainData.labels = self.trainData.labels[{{1, 50000}}]
-  self.testData = torch.load(testFile,'ascii')
-  self.testData.data = self.testData.data:float()
-  self.testData.labels = self.testData.labels:float()
+  local train_file = dir .. '/train_32x32.t7'
+  local test_file = dir .. '/test_32x32.t7'
+  self.train_data = torch.load(train_file,'ascii')
+  self.train_data.data = self.train_data.data:float()
+  self.train_data.labels = self.train_data.labels:float()
+  self.val_data = { data=self.train_data.data[{{50001, 60000}}],
+                    labels=self.train_data.labels[{{50001, 60000}}] }
+  self.train_data.data = self.train_data.data[{{1, 50000}}]
+  self.train_data.labels = self.train_data.labels[{{1, 50000}}]
+  self.test_data = torch.load(test_file,'ascii')
+  self.test_data.data = self.test_data.data:float()
+  self.test_data.labels = self.test_data.labels:float()
 
   -- Preprocess train, val and test data.
 
   -- 1. Calculate mean for train data and subtract the mean from train, val and test data.
-  self.mean = self.trainData.data:mean()
-  self.trainData.data:add(-self.mean)
-  self.valData.data:add(-self.mean)
-  self.testData.data:add(-self.mean)
+  self.mean = self.train_data.data:mean()
+  self.train_data.data:add(-self.mean)
+  self.val_data.data:add(-self.mean)
+  self.test_data.data:add(-self.mean)
 
   -- 2. Calculate std deviation for train data and divide by it
-  self.std = self.trainData.data:std()
-  self.trainData.data:div(self.std)
-  self.valData.data:div(self.std)
-  self.testData.data:div(self.std)
+  self.std = self.train_data.data:std()
+  self.train_data.data:div(self.std)
+  self.val_data.data:div(self.std)
+  self.test_data.data:div(self.std)
 
   print('Train data:')
-  print(self.trainData.labels[{{1, 6}}])
-  print("size: ", self.trainData.data:size(), self.trainData.labels:size())
+  print(self.train_data.labels[{{1, 6}}])
+  print("size: ", self.train_data.data:size(), self.train_data.labels:size())
   print()
 
   print('Test data:')
-  print(self.testData.data:size())
-  print(self.testData.labels[{{1, 6}}])
+  print(self.test_data.data:size())
+  print(self.test_data.labels[{{1, 6}}])
   print()
 
   self:init_train()
@@ -63,7 +64,7 @@ function State:init_train()
   self.gradClip = 5
 
   self.batchSize = 50
-  self.maxBatch = self.trainData.data:size(1) / self.batchSize
+  self.maxBatch = self.train_data.data:size(1) / self.batchSize
   print('maxBatch: ', self.maxBatch)
   self.curBatch = 1
 end
@@ -81,8 +82,8 @@ function State:feval(x)
     if self.curBatch > self.maxBatch then
         self.curBatch = 1
     end
-    local x = self.trainData.data[{{batchStart, batchEnd}}]
-    local y = self.trainData.labels[{{batchStart, batchEnd}}]
+    local x = self.train_data.data[{{batchStart, batchEnd}}]
+    local y = self.train_data.labels[{{batchStart, batchEnd}}]
     if self.use_cuda then
         x = x:float():cuda()
         y = y:float():cuda()
@@ -131,7 +132,7 @@ function State:predict(input)
     return classes
 end
 
-function State:evalAccuracy(input, labels)
+function State:eval_accuracy(input, labels)
     local matches = 0
     local batchSize = 1000
     local from = 1
@@ -147,6 +148,18 @@ function State:evalAccuracy(input, labels)
     return matches / labels:size(1)
 end
 
+function State:train_accuracy()
+  return self:eval_accuracy(self.train_data.data, self.train_data.labels)
+end
+
+function State:val_accuracy()
+  return self:eval_accuracy(self.val_data.data, self.val_data.labels)
+end
+
+function State:test_accuracy()
+  return self:eval_accuracy(self.test_data.data, self.test_data.labels)
+end
+
 function State:save(filename)
   local dog_obj = sid.to_save(self.dog)
   local checkpoint = {
@@ -155,6 +168,17 @@ function State:save(filename)
     std = self.std
   }
   torch.save(filename, checkpoint)
+end
+
+function State:save_checkpoint(dir)
+  print("Saving a checkpoint ...")
+  if not path.exists(dir) then lfs.mkdir(dir) end
+  local date = os.date('*t', os.time())
+  local val_acc = self:val_accuracy()
+  local filename = string.format('%s/mnist-%s-%s-%s-%s-%s-%s.nn',
+            dir, date.year, date.month, date.day, date.hour, date.min, val_acc)
+  self:save(filename)
+  print(string.format("Saved to %s", filename))
 end
 
 function mnist.load(filename, use_cuda)

@@ -48,6 +48,7 @@ for i = 1, iterations do
     if i == 1 or i % 1000 == 0 then
         print(string.format('epoch=%d, i=%d, train loss: %f .. %f .. %f, lr: %f',
                 epoch, i, minLoss, sumLoss / lossCnt, maxLoss, optimState.learningRate))
+	state:save_checkpoint('checkpoints')
         minLoss = 10
         maxLoss = 0
         sumLoss = 0
@@ -55,17 +56,13 @@ for i = 1, iterations do
     end
 end
 
-classes = state:predict(state.trainData.data[{{1, 2}}])
+classes = state:predict(state.train_data.data[{{1, 2}}])
 print("predicted classes: ", classes)
-print("ground truth: ", state.trainData.labels[{{1, 2}}])
+print("ground truth: ", state.train_data.labels[{{1, 2}}])
 
-state:save(string.format('mnist-%s.nn', os.time()))
+state:save_checkpoint('checkpoints')
 
-trainAcc = state:evalAccuracy(state.trainData.data, state.trainData.labels)
-print('train accuracy: ', trainAcc)
+print('train accuracy: ', state:train_accuracy())
+print('validation accuracy: ', state:val_accuracy())
 
-valAcc = state:evalAccuracy(state.valData.data, state.valData.labels)
-print('validation accuracy: ', valAcc)
-
--- testAcc = state:evalAccuracy(state.testData.data, state.testData.labels)
--- print('test accuracy: ', testAcc)
+-- print('test accuracy: ', state:test_accuracy())
