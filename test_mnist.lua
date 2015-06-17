@@ -28,7 +28,7 @@ local function check_save_and_load(use_cuda)
   state.std = 2
   state:create_new('mnist_conv', nil)
   state:save(filename)
-  local state2 = mnist.load(filename)
+  local state2 = mnist.load(filename, use_cuda)
 
   mytester:asserteq(state.dog.arch, state2.dog.arch, title .. 'arch')
   mytester:asserteq(state.dog.args, state2.dog.args, title .. 'args')

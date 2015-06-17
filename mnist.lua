@@ -157,6 +157,15 @@ function State:save(filename)
   torch.save(filename, checkpoint)
 end
 
+function mnist.load(filename, use_cuda)
+  local checkpoint = torch.load(filename)
+  local state = State(use_cuda)
+  state.dog = sid.load_from(checkpoint.dog, use_cuda)
+  state.mean = checkpoint.mean
+  state.std = checkpoint.std
+  return state
+end
+
 -- Define the network creation
 
 inputSize = 32*32
