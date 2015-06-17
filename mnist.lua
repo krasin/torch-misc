@@ -16,7 +16,7 @@ end
 
 -- Returns preprocessed trainData, valData and testData sets,
 -- and mean, std used for preprocessing.
-function load_data(dir)
+local function load_data(dir)
   -- Load MNIST data
   local trainFile = dir .. '/train_32x32.t7'
   local testFile = dir .. '/test_32x32.t7'
@@ -76,7 +76,7 @@ numLabels = 10
 convDropout = 0.3
 dropout = 0.5
 
-function create_mnist_net(arch, args)
+local function create_mnist_net(arch, args)
     if arch ~= 'mnist_conv' then return nil end
 
     local module = nn.Sequential()
@@ -111,19 +111,23 @@ end
 
 sid.register_arch('mnist_conv', create_mnist_net)
 
--- Create a dog to train.
-dog = sid.create('mnist_conv', nil, use_cuda)
-
-criterion = nn.ClassNLLCriterion()
-if use_cuda then
+-- Create a dog to train. Returns dog and criterion.
+local function create_new()
+  local dog = sid.create('mnist_conv', nil, use_cuda)
+  local criterion = nn.ClassNLLCriterion()
+  if use_cuda then
     criterion:cuda()
+  end
+
+  print('params: ', dog.params:size(), dog.params:type())
+  print('gradParams: ', dog.grad_params:size(), dog.grad_params:type())
+
+  -- initialization
+  dog.params:uniform(-0.08, 0.08) -- small numbers uniform
+  return dog, criterion
 end
 
-print('params: ', dog.params:size(), dog.params:type())
-print('gradParams: ', dog.grad_params:size(), dog.grad_params:type())
-
--- initialization
-dog.params:uniform(-0.08, 0.08) -- small numbers uniform
+dog, criterion = create_new()
 
 -- Training facilities
 reg = 1000 / dog.params:size(1) -- L2 regularization strength
