@@ -70,6 +70,8 @@ function State:init_train()
   self.curBatch = 1
 end
 
+local angles = { [1]=3, [2]=10, [3]=3, [4]=10, [5]=3, [6]=10, [7]=3, [8]=10, [9]=10, [0]=10 }
+
 -- Returns the next batch, inputs and labels.
 function State:next_batch()
     local batchStart = (self.curBatch-1)*self.batchSize + 1
@@ -83,11 +85,12 @@ function State:next_batch()
 
     for i = 1, x:size(1) do
       -- Random rotate
-      local theta = torch.uniform(-0.05, 0.05) -- about 3 degrees in each direction
+      local lim = angles[y[i]-1] * math.pi / 180
+      local theta = torch.uniform(-lim, lim) -- about 3 degrees in each direction
       image.rotate(x[i], theta, 'bilinear')
       -- Random translate
-      local dx = torch.uniform(-3, 3)
-      local dy = torch.uniform(-3, 3)
+      local dx = torch.uniform(-4, 4)
+      local dy = torch.uniform(-4, 4)
       image.translate(x[i], dx, dy)
     end
 
@@ -211,7 +214,7 @@ end
 -- Define the network creation
 
 inputSize = 32*32
-convLayers = 3
+convLayers = 4
 numConvFilters = 50
 numLayers = 1
 layerSize = 400
@@ -238,18 +241,18 @@ local function create_mnist_net(arch, args)
     linearInputSize = numConvFilters*inputSize
     module:add(nn.Reshape(linearInputSize))
 
-    --for i = 1, numLayers do
-    --    if i == 1 then
-    --        mlp:add(nn.Linear(linearInputSize, layerSize))
-    --    else
-    --        mlp:add(nn.Linear(layerSize, layerSize))
-    --    end
-    --    mlp:add(nn.ReLU(false))
-    --    mlp:add(nn.Dropout(dropout))
-    --end
-    --mlp:add(nn.Linear(layerSize, numLabels))
+    for i = 1, numLayers do
+        if i == 1 then
+            module:add(nn.Linear(linearInputSize, layerSize))
+        else
+            module:add(nn.Linear(layerSize, layerSize))
+        end
+        module:add(nn.ReLU(false))
+        module:add(nn.Dropout(dropout))
+    end
+    module:add(nn.Linear(layerSize, numLabels))
 
-    module:add(nn.Linear(linearInputSize, numLabels))
+    --module:add(nn.Linear(linearInputSize, numLabels))
     module:add(nn.LogSoftMax())
     return module
 end
