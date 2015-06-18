@@ -13,7 +13,7 @@ if gpuid >= 0 then
 end
 
 state = mnist.State(use_cuda)
-state:create_new('mnist_conv', { conv_layers = 5})
+state:create_new('mnist_conv', { conv_layers = 5, conv_filters = 60})
 state:load_data('data/mnist.t7')
 
 print('mean: ', state.mean)

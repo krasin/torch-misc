@@ -219,7 +219,6 @@ end
 -- Define the network creation
 
 inputSize = 32*32
-numConvFilters = 50
 numLayers = 1
 layerSize = 400
 numLabels = 10
@@ -235,18 +234,21 @@ local function create_mnist_net(arch, args)
   local conv_layers = 4
   if args.conv_layers ~= nil then conv_layers = args.conv_layers end
 
+  local conv_filters = 50
+  if args.conv_filters ~= nil then conv_filters = args.conv_filters end
+
   local module = nn.Sequential()
-  module:add(nn.SpatialConvolution(1, numConvFilters, 5, 5, 1, 1, 2))
+  module:add(nn.SpatialConvolution(1, conv_filters, 5, 5, 1, 1, 2))
   module:add(nn.ReLU(false))
   module:add(nn.Dropout(convDropout))
 
   for i = 1, conv_layers do
-    module:add(nn.SpatialConvolution(numConvFilters, numConvFilters, 3, 3, 1, 1, 1))
+    module:add(nn.SpatialConvolution(conv_filters, conv_filters, 3, 3, 1, 1, 1))
     module:add(nn.ReLU(false))
     module:add(nn.Dropout(convDropout))
   end
     
-  linearInputSize = numConvFilters*inputSize
+  linearInputSize = conv_filters*inputSize
   module:add(nn.Reshape(linearInputSize))
 
   for i = 1, numLayers do
