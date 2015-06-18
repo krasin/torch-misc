@@ -1,3 +1,4 @@
 data/mnist.t7
+data/digits.png
 .ipynb_checkpoints
-
+checkpoints
