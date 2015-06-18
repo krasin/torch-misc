@@ -69,13 +69,8 @@ function State:init_train()
   self.curBatch = 1
 end
 
-function State:feval(x)
-    local dog = self.dog
-    if x ~= dog.params then
-        dog.params:copy(x)
-    end
-    dog.grad_params:zero()
-    ------------------ get minibatch -------------------
+-- Returns the next batch, inputs and labels.
+function State:next_batch()
     local batchStart = (self.curBatch-1)*self.batchSize + 1
     local batchEnd = batchStart + self.batchSize - 1
     self.curBatch = self.curBatch + 1
@@ -88,16 +83,27 @@ function State:feval(x)
         x = x:float():cuda()
         y = y:float():cuda()
     end
+    return x, y
+end
+
+function State:feval(x)
+    local dog = self.dog
+    if x ~= dog.params then
+        dog.params:copy(x)
+    end
+    dog.grad_params:zero()
+
+    local input, labels = self:next_batch()
 
     ------------------- forward pass -------------------
     dog.module:training() -- make sure we are in correct mode 
-    local prediction = dog.module:forward(x)
+    local prediction = dog.module:forward(input)
     local paramNorm = dog.params:norm()
-    local loss = self.criterion:forward(prediction, y) + self.reg * paramNorm * paramNorm / 2
+    local loss = self.criterion:forward(prediction, labels) + self.reg * paramNorm * paramNorm / 2
 
     ------------------ backward pass -------------------
-    local dprediction = self.criterion:backward(prediction, y)
-    dog.module:backward(x, dprediction)
+    local dprediction = self.criterion:backward(prediction, labels)
+    dog.module:backward(input, dprediction)
     
     dog.grad_params:add(self.reg, dog.params) -- apply regularization gradient
     dog.grad_params:clamp(-self.gradClip, self.gradClip)
