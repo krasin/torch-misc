@@ -214,7 +214,6 @@ end
 -- Define the network creation
 
 inputSize = 32*32
-convLayers = 4
 numConvFilters = 50
 numLayers = 1
 layerSize = 400
@@ -225,36 +224,40 @@ convDropout = 0.3
 dropout = 0.5
 
 local function create_mnist_net(arch, args)
-    if arch ~= 'mnist_conv' then return nil end
+  if arch ~= 'mnist_conv' then return nil end
+  if args == nil then args = {} end
 
-    local module = nn.Sequential()
-    module:add(nn.SpatialConvolution(1, numConvFilters, 5, 5, 1, 1, 2))
+  local conv_layers = 4
+  if args.conv_layers ~= nil then conv_layers = args.conv_layers end
+
+  local module = nn.Sequential()
+  module:add(nn.SpatialConvolution(1, numConvFilters, 5, 5, 1, 1, 2))
+  module:add(nn.ReLU(false))
+  module:add(nn.Dropout(convDropout))
+
+  for i = 1, conv_layers do
+    module:add(nn.SpatialConvolution(numConvFilters, numConvFilters, 3, 3, 1, 1, 1))
     module:add(nn.ReLU(false))
     module:add(nn.Dropout(convDropout))
-
-    for i = 1, convLayers do
-        module:add(nn.SpatialConvolution(numConvFilters, numConvFilters, 3, 3, 1, 1, 1))
-        module:add(nn.ReLU(false))
-        module:add(nn.Dropout(convDropout))
-    end
+  end
     
-    linearInputSize = numConvFilters*inputSize
-    module:add(nn.Reshape(linearInputSize))
+  linearInputSize = numConvFilters*inputSize
+  module:add(nn.Reshape(linearInputSize))
 
-    for i = 1, numLayers do
-        if i == 1 then
-            module:add(nn.Linear(linearInputSize, layerSize))
-        else
-            module:add(nn.Linear(layerSize, layerSize))
-        end
-        module:add(nn.ReLU(false))
-        module:add(nn.Dropout(dropout))
+  for i = 1, numLayers do
+    if i == 1 then
+      module:add(nn.Linear(linearInputSize, layerSize))
+    else
+      module:add(nn.Linear(layerSize, layerSize))
     end
-    module:add(nn.Linear(layerSize, numLabels))
+    module:add(nn.ReLU(false))
+    module:add(nn.Dropout(dropout))
+  end
+  module:add(nn.Linear(layerSize, numLabels))
 
-    --module:add(nn.Linear(linearInputSize, numLabels))
-    module:add(nn.LogSoftMax())
-    return module
+  --module:add(nn.Linear(linearInputSize, numLabels))
+  module:add(nn.LogSoftMax())
+  return module
 end
 
 sid.register_arch('mnist_conv', create_mnist_net)
