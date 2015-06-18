@@ -23,3 +23,7 @@ wget -O $TMP_FILE http://torch7.s3-website-us-east-1.amazonaws.com/data/mnist.t7
 tar -xzf $TMP_FILE
 
 echo "MNIST dataset has been downloaded into ${DATA_DIR}/${DEST_DIR}"
+
+echo "Downloading custom test dataset..."
+wget https://s3-us-west-2.amazonaws.com/krasin-tmp/digits.png
+echo "Done"
