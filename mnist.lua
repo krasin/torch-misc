@@ -82,6 +82,10 @@ function State:next_batch()
     local y = self.train_data.labels[{{batchStart, batchEnd}}]:float():clone()
 
     for i = 1, x:size(1) do
+      -- Random rotate
+      local theta = torch.uniform(-0.05, 0.05) -- about 3 degrees in each direction
+      image.rotate(x[i], theta, 'bilinear')
+      -- Random translate
       local dx = torch.uniform(-3, 3)
       local dy = torch.uniform(-3, 3)
       image.translate(x[i], dx, dy)
