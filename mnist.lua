@@ -1,4 +1,5 @@
 require 'torch'
+require 'image'
 require 'nn'
 require 'nngraph'
 require 'optim'
@@ -77,11 +78,18 @@ function State:next_batch()
     if self.curBatch > self.maxBatch then
         self.curBatch = 1
     end
-    local x = self.train_data.data[{{batchStart, batchEnd}}]
-    local y = self.train_data.labels[{{batchStart, batchEnd}}]
+    local x = self.train_data.data[{{batchStart, batchEnd}}]:float():clone()
+    local y = self.train_data.labels[{{batchStart, batchEnd}}]:float():clone()
+
+    for i = 1, x:size(1) do
+      local dx = torch.uniform(-3, 3)
+      local dy = torch.uniform(-3, 3)
+      image.translate(x[i], dx, dy)
+    end
+
     if self.use_cuda then
-        x = x:float():cuda()
-        y = y:float():cuda()
+        x = x:cuda()
+        y = y:cuda()
     end
     return x, y
 end
