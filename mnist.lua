@@ -154,8 +154,11 @@ function State:predict(input)
 end
 
 function State:eval_accuracy(input, labels)
+    local freeMemory, totalMemory = cutorch.getMemoryUsage(1)
+    print('free GPU memory: ', freeMemory)
+    print('total GPU memory: ', totalMemory)
     local matches = 0
-    local batchSize = 1000
+    local batchSize = 100
     local from = 1
     for i = 1, input:size(1) do
         if i - from + 1 >= batchSize or i == input:size(1) then
