@@ -84,14 +84,16 @@ function State:next_batch()
     local y = self.train_data.labels[{{batchStart, batchEnd}}]:float():clone()
 
     for i = 1, x:size(1) do
+      local cur = x[i]
       -- Random rotate
       local lim = angles[y[i]-1] * math.pi / 180
       local theta = torch.uniform(-lim, lim) -- about 3 degrees in each direction
-      image.rotate(x[i], theta, 'bilinear')
+      cur = image.rotate(cur, theta, 'bilinear')
       -- Random translate
       local dx = torch.uniform(-4, 4)
       local dy = torch.uniform(-4, 4)
-      image.translate(x[i], dx, dy)
+      cur = image.translate(cur, dx, dy)
+      x[i]:copy(cur)
     end
 
     if self.use_cuda then
