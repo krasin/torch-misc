@@ -20,10 +20,10 @@ print('mean: ', state.mean)
 print('std: ', state.std)
 
 optimState = {learningRate = 0.0003, alpha = 0.9}
-learningRateDecay = 0.9
+learningRateDecay = 0.95
 learningRateDecayAfter = 10
 
-iterations = 2000
+iterations = 2000000
 
 epoch = 0
 minLoss = 10
@@ -32,7 +32,7 @@ sumLoss = 0
 lossCnt = 0
 
 for i = 1, iterations do
-    if curBatch == 1 then
+    if state.curBatch == 1 then
         epoch = epoch + 1
         if epoch >= learningRateDecayAfter then
             optimState.learningRate = optimState.learningRate * learningRateDecay
