@@ -1,4 +1,6 @@
 data/mnist.t7
 data/digits.png
+data/kitti_stereo
 .ipynb_checkpoints
 checkpoints
+*~
