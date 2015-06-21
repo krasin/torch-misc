@@ -16,18 +16,38 @@ function extract_snippets(base_dir, fname, snippets, perm, index)
 
   local count = 0
   for y = 9, left:size(2) - 9 do
-    for x = 9, left:size(3) - 9 do
-      if disp[1][y][x] > 0 and x - disp[1][y][x] > 9 then
+    for x = 9, left:size(3) - 17 do
+      local x2 = x - disp[1][y][x]
+      if disp[1][y][x] > 0 and x2 > 17 then
         count = count + 1
         if snippets ~= nil then
+	  local is_pos = 1
+	  local rnd = torch.uniform(-8, 8)
+	  if rnd > 0 then
+	    -- This will be a negative example
+            is_pos = 0
+	    -- Random shift will be inside [-8;-4] U [4; 8]
+            local shift = rnd - 4
+            if shift > 0 then
+              shift = shift + 4
+	    else
+	      shift = shift - 4
+            end
+            x2 = math.floor(x2 + shift)
+          else
+	    -- Positive example (+/- 1)
+            if rnd < -4 then
+	      x2 = math.floor(x2-0.5)
+            else
+              x2 = math.ceil(x2+0.5)
+            end
+          end
           local left_snip = left:narrow(2, y-4, 9):narrow(3, x-4, 9)
-          local x2 = x - disp[1][y][x]
-          x2 = math.floor(x2+0.5)
           local right_snip = right:narrow(2, y-4, 9):narrow(3, x2-4, 9)
           snippets[1][perm[index+count-1]]:copy(left_snip[1])
           snippets[2][perm[index+count-1]]:copy(right_snip[1])
           snippets[3][perm[index+count-1]]:zero()
-          snippets[3][perm[index+count-1]][1] = 1
+          snippets[3][perm[index+count-1]][1] = is_pos
         end
       end
     end
@@ -77,5 +97,4 @@ function prepare_data(base_dir, dest_prefix)
   end
 end
 
-prepare_data('data/kitti_stereo/training', 'data/kitti_stereo/t7.training')
-prepare_data('data/kitti_stereo/testing', 'data/kitti_stereo/t7.testing')
+prepare_data('data/kitti_stereo/training', '/mnt/kitti_stereo/snippets')
