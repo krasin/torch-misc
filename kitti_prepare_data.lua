@@ -19,35 +19,36 @@ function extract_snippets(base_dir, fname, snippets, perm, index)
     for x = 9, left:size(3) - 17 do
       local x2 = x - disp[1][y][x]
       if disp[1][y][x] > 0 and x2 > 17 then
+        local left_snip = left:narrow(2, y-4, 9):narrow(3, x-4, 9)
         count = count + 1
         if snippets ~= nil then
-	  local is_pos = 1
-	  local rnd = torch.uniform(-8, 8)
-	  if rnd > 0 then
-	    -- This will be a negative example
-            is_pos = 0
-	    -- Random shift will be inside [-8;-4] U [4; 8]
-            local shift = rnd - 4
-            if shift > 0 then
-              shift = shift + 4
-	    else
-	      shift = shift - 4
-            end
-            x2 = math.floor(x2 + shift)
-          else
-	    -- Positive example (+/- 1)
-            if rnd < -4 then
-	      x2 = math.floor(x2-0.5)
-            else
-              x2 = math.ceil(x2+0.5)
-            end
+	  -- Generate negative example.
+          -- Random shift will be inside [-8;-4] U [4; 8]
+	  local shift = torch.uniform(-4, 4)
+          if shift > 0 then
+            shift = shift + 4
+	  else
+	    shift = shift - 4
           end
-          local left_snip = left:narrow(2, y-4, 9):narrow(3, x-4, 9)
+          local x3 = math.floor(x2 + shift)
+          local right_snip = right:narrow(2, y-4, 9):narrow(3, x3-4, 9)
+          snippets[1][perm[index+count-1]]:copy(left_snip[1])
+          snippets[2][perm[index+count-1]]:copy(right_snip[1])
+          snippets[3][perm[index+count-1]]:zero()
+        end
+        count = count + 1
+        if snippets ~= nil then
+          -- Generate positive example (+/- 1 px)
+          if torch.uniform() > 0.5 then
+	    x2 = math.floor(x2-0.5)
+          else
+            x2 = math.ceil(x2+0.5)
+          end
           local right_snip = right:narrow(2, y-4, 9):narrow(3, x2-4, 9)
           snippets[1][perm[index+count-1]]:copy(left_snip[1])
           snippets[2][perm[index+count-1]]:copy(right_snip[1])
           snippets[3][perm[index+count-1]]:zero()
-          snippets[3][perm[index+count-1]][1] = is_pos
+          snippets[3][perm[index+count-1]][1] = 1
         end
       end
     end
