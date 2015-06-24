@@ -30,15 +30,15 @@ function State:load_data(dir)
 
   self.train_data = {}
   self.train_data.data = tt:narrow(1, 1, 2):narrow(2, 1, train_size)
-  self.train_data.labels = tt:narrow(1, 3, 1):narrow(2, 1, train_size)
+  self.train_data.labels = tt:narrow(1, 3, 1):narrow(2, 1, train_size):narrow(3, 1, 1):narrow(4, 1, 1)
 
   self.val_data = {}
   self.val_data.data = tt:narrow(1, 1, 2):narrow(2, train_size+1, val_size)
-  self.val_data.labels = tt:narrow(1, 3, 1):narrow(2, train_size+1, val_size)
+  self.val_data.labels = tt:narrow(1, 3, 1):narrow(2, train_size+1, val_size):narrow(3, 1, 1):narrow(4, 1, 1)
 
   self.test_data = {}
   self.test_data.data = tt.narrow(1, 1, 2):narrow(2, train_size+val_size+1, test_size)
-  self.test_data.labels = tt:narrow(1, 3, 1):narrow(2, train_size+val_size+1, test_size)
+  self.test_data.labels = tt:narrow(1, 3, 1):narrow(2, train_size+val_size+1, test_size):narrow(3, 1, 1):narrow(4, 1, 1)
 
   print(string.format('Loaded data, train size: %d, val size: %d, test size: %d', train_size, val_size, test_size))
 
@@ -49,16 +49,11 @@ function State:load_data(dir)
   -- TTTKKK
 
   -- 1. Calculate mean for train data and subtract the mean from train, val and test data.
+
   self.mean = self.train_data.data:mean()
-  self.train_data.data:add(-self.mean)
-  self.val_data.data:add(-self.mean)
-  self.test_data.data:add(-self.mean)
 
   -- 2. Calculate std deviation for train data and divide by it
   self.std = self.train_data.data:std()
-  self.train_data.data:div(self.std)
-  self.val_data.data:div(self.std)
-  self.test_data.data:div(self.std)
 
   print('Train data:')
   print(self.train_data.labels[{{1, 6}}])
@@ -84,8 +79,6 @@ function State:init_train()
   self.curBatch = 1
 end
 
-local angles = { [1]=3, [2]=10, [3]=3, [4]=10, [5]=3, [6]=10, [7]=3, [8]=10, [9]=10, [0]=10 }
-
 -- Returns the next batch, inputs and labels.
 function State:next_batch()
     local batchStart = (self.curBatch-1)*self.batchSize + 1
@@ -97,18 +90,8 @@ function State:next_batch()
     local x = self.train_data.data[{{batchStart, batchEnd}}]:float():clone()
     local y = self.train_data.labels[{{batchStart, batchEnd}}]:float():clone()
 
-    for i = 1, x:size(1) do
-      local cur = x[i]
-      -- Random rotate
-      local lim = angles[y[i]-1] * math.pi / 180
-      local theta = torch.uniform(-lim, lim) -- about 3 degrees in each direction
-      cur = image.rotate(cur, theta, 'bilinear')
-      -- Random translate
-      local dx = torch.uniform(-4, 4)
-      local dy = torch.uniform(-4, 4)
-      cur = image.translate(cur, dx, dy)
-      x[i]:copy(cur)
-    end
+    x:add(-self.mean)
+    x:mul(1/self.std)
 
     if self.use_cuda then
         x = x:cuda()
@@ -232,7 +215,7 @@ end
 
 -- Define the network creation
 
-inputSize = 32*32
+inputSize = 9*9
 numLayers = 1
 layerSize = 400
 numLabels = 10
